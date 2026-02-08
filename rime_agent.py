@@ -22,7 +22,7 @@ from livekit.plugins import (
     noise_cancellation,
     rime,
     silero,
-    tavus
+    tavus,
 )
 from livekit.agents.tokenize import tokenizer
 
