@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import random
 import os
 import json
 import argparse
@@ -31,19 +30,15 @@ from livekit.plugins import (
     silero,
     elevenlabs,
 )
-from livekit.agents.tokenize import tokenizer
-
-from agent_configs import VOICE_CONFIGS
 from tools.snowflake_rag_tool import get_snowflake_rag_response, write_chat_to_snowflake
 
 load_dotenv()
 logger = logging.getLogger("voice-agent")
 
-VOICE_NAMES = ["celeste"]
-# randomly select a voice from the list
-VOICE = random.choice(VOICE_NAMES)
+# Default config path (in project root folder) when --config is not passed
+DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "agent_template", "Katerina.json")
 
-# Global config loaded from JSON file (set when --config is used)
+# Global config loaded from JSON file (always set: either --config or default)
 LOADED_CONFIG = None
 
 def load_config_from_file(config_path: str) -> dict:
@@ -57,9 +52,7 @@ def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
 class RimeAssistant(Agent):
-    def __init__(self, prompt: str = None) -> None:
-        if prompt is None:
-            prompt = VOICE_CONFIGS[VOICE]["llm_prompt"]
+    def __init__(self, prompt: str) -> None:
         super().__init__(instructions=prompt)
 
 
@@ -83,65 +76,49 @@ async def entrypoint(ctx: JobContext):
     # Wait for the first participant to connect
     participant = await ctx.wait_for_participant()
 
-    # Determine which configuration to use
-    if LOADED_CONFIG:
-        voice_name = LOADED_CONFIG.get("name", "custom")
-        logger.info(f"Running voice agent with loaded config: {voice_name} for participant {participant.identity}")
-        
-        tts_provider = (LOADED_CONFIG.get("tts_type") or LOADED_CONFIG.get("provider") or "rime").lower()
-        voice_options = LOADED_CONFIG.get("voice_options", {})
-        
-        # TTS from JSON: ElevenLabs or Rime
-        if tts_provider == "elevenlabs":
-            el_opts = dict(voice_options)
-            model = el_opts.pop("model_id", "eleven_multilingual_v2")
-            voice_id = el_opts.pop("voice_id", None)
-            if "optimize_streaming_latency" in el_opts:
-                el_opts["streaming_latency"] = el_opts.pop("optimize_streaming_latency")
-            voice_tts = elevenlabs.TTS(model=model, voice_id=voice_id, **el_opts)
-        else:
-            voice_tts = rime.TTS(
-                model=voice_options.get("model", "arcana"),
-                speaker=voice_options.get("speaker", "celeste"),
-                speed_alpha=voice_options.get("speed_alpha", 1.5),
-                reduce_latency=voice_options.get("reduce_latency", True),
-                max_tokens=voice_options.get("max_tokens", 3400),
-            )
-        
-        llm_prompt = LOADED_CONFIG.get("personality_prompt", "You are a helpful assistant.")
-        greeting = LOADED_CONFIG.get("greeting") or {}
-        intro_phrase = greeting.get("intro_phrase", LOADED_CONFIG.get("intro_phrase", "Hello!"))
-        
-        # LLM from JSON: llm.provider + llm.model or llm_provider + llm_model
-        llm_cfg = LOADED_CONFIG.get("llm") or {}
-        llm_provider = (llm_cfg.get("provider") or LOADED_CONFIG.get("llm_provider") or "openai").lower()
-        llm_model = llm_cfg.get("model") or LOADED_CONFIG.get("llm_model", "gpt-4o-mini")
-        if llm_provider == "google":
-            agent_llm = google.LLM(model=llm_model)
-        elif llm_provider == "anthropic":
-            api_key = (os.getenv("ANTHROPIC_API_KEY") or os.getenv("anthropic_api_key") or "").strip().strip('"').strip("'")
-            if not api_key:
-                raise ValueError("ANTHROPIC_API_KEY is not set. Set it in .env for Anthropic/Claude.")
-            os.environ["ANTHROPIC_API_KEY"] = api_key
-            agent_llm = anthropic.LLM(model=llm_model)
-        else:
-            agent_llm = openai.LLM(model=llm_model)
+    # Config is always set (default or --config)
+    cfg = LOADED_CONFIG
+    voice_name = cfg.get("name", "custom")
+    logger.info(f"Running voice agent with config: {voice_name} for participant {participant.identity}")
+
+    tts_provider = (cfg.get("tts_type") or cfg.get("provider") or "rime").lower()
+    voice_options = cfg.get("voice_options", {})
+
+    # TTS from JSON: ElevenLabs or Rime
+    if tts_provider == "elevenlabs":
+        el_opts = dict(voice_options)
+        model = el_opts.pop("model_id", "eleven_multilingual_v2")
+        voice_id = el_opts.pop("voice_id", None)
+        if "optimize_streaming_latency" in el_opts:
+            el_opts["streaming_latency"] = el_opts.pop("optimize_streaming_latency")
+        voice_tts = elevenlabs.TTS(model=model, voice_id=voice_id, **el_opts)
     else:
-        voice_name = VOICE
-        logger.info(f"Running Rime voice agent for voice config {voice_name} and participant {participant.identity}")
-        
-        voice_tts = rime.TTS(**VOICE_CONFIGS[VOICE]["tts_options"])
-        if VOICE_CONFIGS[VOICE].get("sentence_tokenizer"):
-            sentence_tokenizer = VOICE_CONFIGS[VOICE].get("sentence_tokenizer")
-            if not isinstance(sentence_tokenizer, tokenizer.SentenceTokenizer):
-                raise TypeError(
-                    f"Expected sentence_tokenizer to be an instance of tokenizer.SentenceTokenizer, got {type(sentence_tokenizer)}"
-                )
-            voice_tts = tts.StreamAdapter(tts=voice_tts, sentence_tokenizer=sentence_tokenizer)
-        
-        llm_prompt = VOICE_CONFIGS[VOICE]["llm_prompt"]
-        intro_phrase = VOICE_CONFIGS[VOICE]["intro_phrase"]
-        agent_llm = openai.LLM(model="gpt-4o-mini")
+        voice_tts = rime.TTS(
+            model=voice_options.get("model", "arcana"),
+            speaker=voice_options.get("speaker", "celeste"),
+            speed_alpha=voice_options.get("speed_alpha", 1.5),
+            reduce_latency=voice_options.get("reduce_latency", True),
+            max_tokens=voice_options.get("max_tokens", 3400),
+        )
+
+    llm_prompt = cfg.get("personality_prompt", "You are a helpful assistant.")
+    greeting = cfg.get("greeting") or {}
+    intro_phrase = greeting.get("intro_phrase", cfg.get("intro_phrase", "Hello!"))
+
+    # LLM from JSON: llm.provider + llm.model or llm_provider + llm_model
+    llm_cfg = cfg.get("llm") or {}
+    llm_provider = (llm_cfg.get("provider") or cfg.get("llm_provider") or "openai").lower()
+    llm_model = llm_cfg.get("model") or cfg.get("llm_model", "gpt-4o-mini")
+    if llm_provider == "google":
+        agent_llm = google.LLM(model=llm_model)
+    elif llm_provider == "anthropic":
+        api_key = (os.getenv("ANTHROPIC_API_KEY") or os.getenv("anthropic_api_key") or "").strip().strip('"').strip("'")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY is not set. Set it in .env for Anthropic/Claude.")
+        os.environ["ANTHROPIC_API_KEY"] = api_key
+        agent_llm = anthropic.LLM(model=llm_model)
+    else:
+        agent_llm = openai.LLM(model=llm_model)
 
     session = AgentSession(
         stt=openai.STT(),
@@ -160,7 +137,7 @@ async def entrypoint(ctx: JobContext):
     # Write each conversation turn (user + assistant) to Snowflake when SNOWFLAKE_CHAT_TABLE is set
     session_id = ctx.room.sid or ctx.room.name or "unknown"
     participant_id = participant.identity or "unknown"
-    agent_name = (LOADED_CONFIG or {}).get("name", "agent") or "agent"
+    agent_name = cfg.get("name", "agent") or "agent"
 
     @session.on("conversation_item_added")
     def _on_conversation_item_added(ev):
@@ -184,7 +161,7 @@ async def entrypoint(ctx: JobContext):
     ctx.add_shutdown_callback(log_usage)
 
     # Use agent with Snowflake RAG tool when config requests it
-    tools_list = (LOADED_CONFIG or {}).get("tools") or []
+    tools_list = cfg.get("tools") or []
     if "snowflake_rag" in tools_list:
         agent = RimeAssistantWithSnowflakeRAG(prompt=llm_prompt)
         logger.info("Agent has Snowflake Agentic RAG tool enabled")
@@ -203,7 +180,7 @@ async def entrypoint(ctx: JobContext):
     await session.say(intro_phrase)
 
 def _parse_config_and_run():
-    """Parse --config from argv, set LOADED_CONFIG, then run the app."""
+    """Parse --config from argv, set LOADED_CONFIG, then run the app. Defaults to config in project folder if omitted."""
     import sys
     config_file = None
     if "--config" in sys.argv:
@@ -212,10 +189,12 @@ def _parse_config_and_run():
             config_file = sys.argv[config_idx + 1]
             sys.argv.pop(config_idx)
             sys.argv.pop(config_idx)
+    if not config_file:
+        config_file = DEFAULT_CONFIG_PATH
+        logger.info(f"No --config given; using default: {config_file}")
     global LOADED_CONFIG
-    if config_file:
-        LOADED_CONFIG = load_config_from_file(config_file)
-        logger.info(f"Using config from {config_file}")
+    LOADED_CONFIG = load_config_from_file(config_file)
+    logger.info(f"Using config: {config_file}")
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
