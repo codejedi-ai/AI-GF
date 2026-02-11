@@ -101,13 +101,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Download Model Files
+### 4. Download Model Files (Hugging Face / Léa)
 
 ```bash
 python rime_agent.py download-files
 ```
 
-This will download any required TTS or turn detection models.
+This downloads **Hugging Face** models used when an agent has `provider: "huggingface"` (e.g. Léa). Models are cached locally so the agent can run TTS, STT, and LLM via the **transformers** library in-process. Requires `transformers` and `torch` (see `requirements.txt`).
 
 ---
 
@@ -180,6 +180,48 @@ The system prompt can be a plain string or an object with `type` and `content`:
 - **File path:** `"personality_prompt": { "type": "File Path", "content": "prompts/katerina.txt" }` (relative to project root)
 
 Use `content` or `Content`; `type` is one of: `String`, `URL`, `File Path`.
+
+### TTS and STT in agent JSON
+
+**tts** has top-level `provider`, `model`, `url`, and a nested **voice_options** object for provider-specific options. **stt** uses the same top-level shape.
+
+```json
+"tts": {
+  "provider": "elevenlabs",
+  "model": "eleven_multilingual_v2",
+  "url": null,
+  "voice_options": { "voice_id": "...", "optimize_streaming_latency": 3 }
+},
+"stt": { "provider": "openai", "model": "gpt-4o-mini-transcribe", "url": null }
+```
+
+- **provider / model / url:** same as before.
+- **tts.voice_options:** ElevenLabs `voice_id`, `model_id`, `optimize_streaming_latency`; Kokoro `voice`, `speed`, `base_url`; Rime `speaker`, `speed_alpha`, `reduce_latency`, `max_tokens`.
+
+**Local / embedded models (no API):** For **Silero** and **Hugging Face**, TTS, STT, and (for HF) LLM run **locally inside the agent process**—no external API calls. Models are loaded in-process (torch.hub for Silero, transformers for Hugging Face). This is not an API; the models are embedded in the agent.
+
+- **Chrystèle** (Silero TTS/STT, local LLM): `"tts": { "provider": "silero", "voice_options": { "language": "en", "speaker": "lj_16khz" } }`, `"stt": { "provider": "silero", "language": "en" }`, `"vad": { "provider": "silero", "model": "silero_vad" }`. TTS and STT use snakers4/silero-models (torch.hub) in-process. LLM can be LM Studio (OpenAI-compatible URL) or another local server.
+- **Léa** (Hugging Face, all local): `"tts"`, `"stt"`, and `"llm"` all use `"provider": "huggingface"` with Hugging Face Hub model IDs. The **transformers** library runs TTS, STT, and LLM **inside the agent process** (see `plugins/hf_tts.py`, `plugins/hf_stt.py`, `plugins/hf_llm.py`). Run `python rime_agent.py download-files` once to cache models. No API—models run locally in the agent.
+
+**Alternative (OpenAI-compatible servers):** You can use local servers (e.g. Ollama, Whisper API, Kokoro) and `"provider": "openai"` with `"url": "http://localhost:..."` in the agent JSON. Those are still local but run in a separate process; Silero and Hugging Face run embedded in the agent with no separate server.
+
+### VAD in agent JSON
+
+**vad** configures Voice Activity Detection (when the user is speaking). It supports `provider` and `model`; optionally `onnx_file_path` for a custom ONNX file when using Silero.
+
+```json
+"vad": { "provider": "silero", "model": "silero_vad" }
+```
+
+- **provider:** `"silero"` (default) or `"huggingface"`. Silero is used for all agents today; when `provider` is `"huggingface"`, the config is in place for a future HF VAD plugin.
+- **model:** Identifier for the VAD model. For Silero, use `"silero_vad"`—this is the bundled ONNX model (`silero_vad.onnx`) from livekit-plugins-silero (snakers4/silero-vad). If omitted, the same default is used.
+- **onnx_file_path** (optional): Path to a custom Silero VAD ONNX file; if set, this file is loaded instead of the bundled model.
+
+**Chrystèle** uses `"vad": { "provider": "silero", "model": "silero_vad" }`. **Léa** can use `"provider": "huggingface"` for future HF VAD alignment.
+
+### Expressive TTS tags (LiveKit / Rime)
+
+To make agents sound livelier, use tags like `<laugh>`, `<sigh>`, `<mmm>`, `<whis>...</whis>` in `personality_prompt` and `intro_phrase`. They work best with **Rime Arcana** TTS; other engines may ignore them. See **[docs/LIVEKIT_TTS_TAGS.md](docs/LIVEKIT_TTS_TAGS.md)** for the full list and usage.
 
 - Edit `agent_configs.py` to:
   - Add new personas (copy the `"celeste"` config and modify).

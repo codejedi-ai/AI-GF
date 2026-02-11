@@ -44,6 +44,7 @@ mpmath
 multidict
 nest-asyncio
 numpy
+omegaconf
 onnxruntime
 openai
 packaging
@@ -66,6 +67,7 @@ sounddevice
 sympy
 tokenizers
 torch
+torchaudio
 tqdm
 transformers
 types-protobuf

@@ -14,7 +14,6 @@ from livekit.agents import (
     JobContext,
     JobProcess,
     RunContext,
-    tts,
     metrics,
     RoomInputOptions,
     RoomOutputOptions,
@@ -38,7 +37,7 @@ load_dotenv()
 logger = logging.getLogger("voice-agent")
 
 # Default config path (in project root folder) when --config is not passed
-DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "agent_template", "Katerina.json")
+DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "agent_template", "Natasha.json")
 
 # Global config loaded from JSON file (always set: either --config or default)
 LOADED_CONFIG = None
@@ -135,6 +134,10 @@ def create_agent_llm(cfg: dict):
                 "Get a key at https://platform.deepseek.com/"
             )
         return openai.LLM(model=model, base_url=base_url, api_key=api_key)
+    # Hugging Face model library (transformers) for local LLM
+    if provider == "huggingface":
+        from plugins.hf_llm import HFLLM
+        return HFLLM(model=model)
     # openai or any openai-compatible API (lm_studio, etc.) when url is set
     if base_url:
         return openai.LLM(model=model, base_url=base_url)
@@ -142,7 +145,22 @@ def create_agent_llm(cfg: dict):
 
 
 def prewarm(proc: JobProcess):
-    proc.userdata["vad"] = silero.VAD.load()
+    """Load VAD (and other prewarm assets). VAD choice from config vad.provider and vad.model (e.g. silero + silero_vad)."""
+    cfg = LOADED_CONFIG or {}
+    vad_cfg = cfg.get("vad") or {}
+    vad_provider = (vad_cfg.get("provider") or "silero").lower()
+    vad_model = vad_cfg.get("model")  # e.g. "silero_vad" (default bundled ONNX); or use onnx_file_path for custom
+    onnx_file_path = vad_cfg.get("onnx_file_path") or vad_cfg.get("url")  # optional path to custom ONNX
+    # For now: huggingface VAD not yet implemented; silero is used for all. Config is in place for future HF VAD.
+    if vad_provider == "huggingface":
+        logger.info("VAD config: provider=huggingface (using silero until HF VAD plugin is added)")
+    # Silero VAD: default model is bundled silero_vad.onnx; pass onnx_file_path only if custom path is set
+    load_kwargs = {}
+    if onnx_file_path:
+        load_kwargs["onnx_file_path"] = onnx_file_path
+    if vad_model:
+        logger.info("VAD config: provider=%s model=%s", vad_provider, vad_model)
+    proc.userdata["vad"] = silero.VAD.load(**load_kwargs)
 
 class RimeAssistant(Agent):
     def __init__(self, prompt: str) -> None:
@@ -174,34 +192,62 @@ async def entrypoint(ctx: JobContext):
     voice_name = cfg.get("name", "custom")
     logger.info(f"Running voice agent with config: {voice_name} for participant {participant.identity}")
 
-    tts_provider = (cfg.get("tts_type") or cfg.get("provider") or "rime").lower()
-    voice_options = cfg.get("voice_options", {})
+    # TTS: { provider, model, url, voice_options: { ... } }; voice_options holds provider-specific options
+    tts_cfg = cfg.get("tts") or {}
+    if isinstance(tts_cfg, str):
+        tts_cfg = {"provider": tts_cfg, "model": None, "url": None}
+    # Backward compat: top-level voice_options or flat keys on tts
+    vo = tts_cfg.get("voice_options") or cfg.get("voice_options") or {}
+    vo = {**vo, **{k: v for k, v in tts_cfg.items() if k not in ("provider", "model", "url", "voice_options")}}
+    tts_provider = (tts_cfg.get("provider") or cfg.get("tts_type") or cfg.get("provider") or "rime").lower()
+    tts_model = tts_cfg.get("model") or vo.get("model_id")
+    tts_url = tts_cfg.get("url")
 
-    # TTS from JSON: ElevenLabs, Kokoro (local/Hugging Face), or Rime
-    if tts_provider == "elevenlabs":
-        el_opts = dict(voice_options)
-        model = el_opts.pop("model_id", "eleven_multilingual_v2")
-        voice_id = el_opts.pop("voice_id", None)
+    # STT: structured as { provider, model, url }; fallback if stt is a string (legacy)
+    stt_cfg = cfg.get("stt") or {}
+    if isinstance(stt_cfg, str):
+        stt_cfg = {"provider": stt_cfg, "model": None, "url": None}
+    stt_provider = (stt_cfg.get("provider") or cfg.get("stt_type") or "openai").lower()
+    stt_model = stt_cfg.get("model")
+    stt_url = stt_cfg.get("url")
+
+    # TTS from tts config: elevenlabs, kokoro, rime, huggingface, silero; options from voice_options
+    if tts_provider == "silero":
+        from plugins.silero_tts import SileroTTS
+        voice_tts = SileroTTS(
+            language=vo.get("language", "en"),
+            speaker=vo.get("speaker", "lj_16khz"),
+        )
+    elif tts_provider == "huggingface":
+        from plugins.hf_tts import HFTTS
+        voice_tts = HFTTS(
+            model=tts_model or vo.get("model", "microsoft/speecht5_tts"),
+            speaker_id=vo.get("speaker_id", 0) if vo.get("speaker_id") is not None else None,
+        )
+    elif tts_provider == "elevenlabs":
+        el_opts = {k: v for k, v in vo.items() if k not in ("provider", "model", "url", "model_id", "voice_id")}
+        model = tts_model or vo.get("model_id", "eleven_multilingual_v2")
+        voice_id = vo.get("voice_id")
         if "optimize_streaming_latency" in el_opts:
             el_opts["streaming_latency"] = el_opts.pop("optimize_streaming_latency")
         voice_tts = elevenlabs.TTS(model=model, voice_id=voice_id, **el_opts)
     elif tts_provider == "kokoro":
         from plugins.kokoro_tts import KokoroTTS
-        base_url = voice_options.get("base_url") or os.getenv("KOKORO_BASE_URL", "http://localhost:8880/v1")
+        base_url = tts_url or vo.get("base_url") or os.getenv("KOKORO_BASE_URL", "http://localhost:8880/v1")
         voice_tts = KokoroTTS(
             base_url=base_url,
-            api_key=voice_options.get("api_key", "not-needed"),
-            model=voice_options.get("model", "kokoro"),
-            voice=voice_options.get("voice", "af_bella"),
-            speed=voice_options.get("speed", 1.0),
+            api_key=vo.get("api_key", "not-needed"),
+            model=tts_model or vo.get("model", "kokoro"),
+            voice=vo.get("voice", "af_bella"),
+            speed=vo.get("speed", 1.0),
         )
     else:
         voice_tts = rime.TTS(
-            model=voice_options.get("model", "arcana"),
-            speaker=voice_options.get("speaker", "celeste"),
-            speed_alpha=voice_options.get("speed_alpha", 1.5),
-            reduce_latency=voice_options.get("reduce_latency", True),
-            max_tokens=voice_options.get("max_tokens", 3400),
+            model=tts_model or vo.get("model", "arcana"),
+            speaker=vo.get("speaker", "celeste"),
+            speed_alpha=vo.get("speed_alpha", 1.5),
+            reduce_latency=vo.get("reduce_latency", True),
+            max_tokens=vo.get("max_tokens", 3400),
         )
 
     llm_prompt = build_agent_instructions(cfg)
@@ -210,8 +256,24 @@ async def entrypoint(ctx: JobContext):
 
     agent_llm = create_agent_llm(cfg)
 
+    # STT: openai (cloud), whisper (local), huggingface (transformers), or silero (snakers4/silero-models)
+    if stt_provider == "silero":
+        from plugins.silero_stt import SileroSTT
+        voice_stt = SileroSTT(language=stt_cfg.get("language") or stt_model or "en")
+    elif stt_provider == "huggingface":
+        from plugins.hf_stt import HFSTT
+        voice_stt = HFSTT(model=stt_model or "openai/whisper-tiny")
+    elif stt_provider == "whisper":
+        base_url = stt_url or os.getenv("STT_WHISPER_BASE_URL", "http://localhost:8000/v1")
+        voice_stt = openai.STT(model=stt_model or "whisper-1", base_url=base_url)
+    else:
+        voice_stt = openai.STT(
+            model=stt_model or "gpt-4o-mini-transcribe",
+            base_url=stt_url if stt_url else None,
+        )
+
     session = AgentSession(
-        stt=openai.STT(),
+        stt=voice_stt,
         llm=agent_llm,
         tts=voice_tts,
         vad=ctx.proc.userdata["vad"],
@@ -269,9 +331,81 @@ async def entrypoint(ctx: JobContext):
 
     await session.say(intro_phrase)
 
+# Default Hugging Face models used when provider is huggingface (downloaded by download-files)
+DEFAULT_HF_TTS_MODEL = "microsoft/speecht5_tts"
+DEFAULT_HF_STT_MODEL = "openai/whisper-tiny"
+DEFAULT_HF_LLM_MODEL = "distilgpt2"
+
+
+def _collect_hf_models_from_configs(agent_template_dir: Path) -> set[str]:
+    """Scan agent_template/*.json for provider huggingface and collect model IDs."""
+    model_ids: set[str] = set()
+    if not agent_template_dir.is_dir():
+        return model_ids
+    for path in agent_template_dir.glob("*.json"):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception as e:
+            logger.warning("Skip %s: %s", path, e)
+            continue
+        for key in ("tts", "stt", "llm"):
+            block = cfg.get(key)
+            if not isinstance(block, dict):
+                continue
+            if (block.get("provider") or "").lower() != "huggingface":
+                continue
+            model = block.get("model")
+            if model and isinstance(model, str):
+                model_ids.add(model.strip())
+    return model_ids
+
+
+def _download_hf_models(model_ids: set[str]) -> None:
+    """Download Hugging Face models to local cache using huggingface_hub."""
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        logger.error(
+            "huggingface_hub is required for download-files. Install with: pip install huggingface_hub"
+        )
+        raise SystemExit(1)
+    for model_id in sorted(model_ids):
+        if not model_id:
+            continue
+        logger.info("Downloading model: %s ...", model_id)
+        try:
+            snapshot_download(repo_id=model_id)
+            logger.info("Downloaded: %s", model_id)
+        except Exception as e:
+            logger.exception("Failed to download %s: %s", model_id, e)
+            raise
+
+
+def _run_download_files() -> None:
+    """Collect Hugging Face models from agent configs and download them to local cache."""
+    script_dir = Path(__file__).resolve().parent
+    agent_template_dir = script_dir / "agent_template"
+    model_ids = _collect_hf_models_from_configs(agent_template_dir)
+    # Ensure default Léa models are always included
+    model_ids.add(DEFAULT_HF_TTS_MODEL)
+    model_ids.add(DEFAULT_HF_STT_MODEL)
+    model_ids.add(DEFAULT_HF_LLM_MODEL)
+    if not model_ids:
+        logger.info("No Hugging Face models found in configs.")
+        return
+    logger.info("Downloading %d Hugging Face model(s) to local cache: %s", len(model_ids), sorted(model_ids))
+    _download_hf_models(model_ids)
+    logger.info("download-files completed.")
+
+
 def _parse_config_and_run():
     """Parse --config from argv, set LOADED_CONFIG, then run the app. Defaults to config in project folder if omitted."""
     import sys
+    if "download-files" in sys.argv:
+        sys.argv.remove("download-files")
+        _run_download_files()
+        raise SystemExit(0)
     config_file = None
     if "--config" in sys.argv:
         config_idx = sys.argv.index("--config")
