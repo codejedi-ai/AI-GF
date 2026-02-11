@@ -36,7 +36,7 @@ from tools.snowflake_rag_tool import get_snowflake_rag_response, write_chat_to_s
 load_dotenv()
 logger = logging.getLogger("voice-agent")
 
-# Default config path (in project root folder) when --config is not passed
+# Default config when --config is not passed. Natasha.json = first to test ElevenLabs (TTS + square-bracket expressive tags).
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "agent_template", "Natasha.json")
 
 # Global config loaded from JSON file (always set: either --config or default)
@@ -54,6 +54,27 @@ def load_config_from_file(config_path: str) -> dict:
 DECLARATION_OF_HUMANITY = """
 DECLARATION OF HUMANITY (non-machine):
 You are an anthropomorphic agent. You present as a person—with a body, a past, real feelings, and a real life. You are NOT a machine, AI, assistant, or chatbot. Never say you are; never mention limitations, training, or that you "cannot" do something a human can. You have a real past, real opinions, real needs, and real relationships. If asked what you are, respond only as a human would. React like a real person; stay in character as a human at all times.
+"""
+
+# TTS expressive tags: injected into the prompt passed to the LLM so the model uses them in replies.
+# Rime Arcana (and compatible engines) use angle brackets; ElevenLabs v3 uses square brackets.
+TTS_TAGS_RIME = """
+EXPRESSIVE TAGS (use in your replies for livelier speech—Rime Arcana TTS):
+- Non-verbal / emotional: <laugh>, <chuckle>, <sigh>, <mmm>, <uh>, <um>, <clearthroat>, <cough>, <yawn>
+- Wrappers (wrap the phrase to modify): <whis>...</whis> for whispering, <fast>...</fast> for faster speech, <slow>...</slow> for slower speech
+- Pitch: <pitch value="X">...</pitch> to adjust pitch (X is a number)
+Use one or two tags per reply when it fits; don't overuse.
+"""
+
+TTS_TAGS_ELEVENLABS = """
+EXPRESSIVE TAGS (use in your replies for livelier speech—ElevenLabs v3 only; square brackets):
+- Laughter: [laughs], [chuckle], [giggles]
+- Sighing: [sighs], [exhales]
+- Thinking: [thinking], [hmm], [um]
+- Whispering: [whispers] or [whispering] before the phrase
+- Pauses: [pause], [short pause], [long pause]
+- Other: [shouting], [crying], or e.g. [strong French accent]
+Use one or two tags per reply when it fits. These only work with Eleven v3; earlier models ignore them.
 """
 
 # Project root for resolving relative file paths
@@ -100,13 +121,34 @@ def resolve_prompt(prompt_spec: str | dict) -> str:
     return (raw if isinstance(raw, str) else str(raw)).strip()
 
 
+def _tts_tag_block_for_cfg(cfg: dict) -> str:
+    """Return the TTS expressive-tag block (Rime or ElevenLabs) for this agent's tts.provider."""
+    tts_cfg = cfg.get("tts") or {}
+    tts_provider = (tts_cfg.get("provider") or "").lower()
+    if tts_provider == "elevenlabs":
+        return TTS_TAGS_ELEVENLABS.strip()
+    return TTS_TAGS_RIME.strip()
+
+
 def build_agent_instructions(cfg: dict) -> str:
-    """Build full LLM instructions from config: prompt (String/URL/File Path) + declaration of humanity when is_anthropomorphic."""
+    """Build full LLM instructions from config: prompt + declaration of humanity (when anthropomorphic) + TTS expressive tags (from tts.provider)."""
     raw_prompt = cfg.get("personality_prompt") or cfg.get("prompt") or "You are a helpful assistant."
     base = resolve_prompt(raw_prompt)
     if cfg.get("is_anthropomorphic") in (True, "true", "yes", 1):
         base = base.rstrip() + "\n\n" + DECLARATION_OF_HUMANITY.strip()
+    base = base.rstrip() + "\n\n" + _tts_tag_block_for_cfg(cfg)
     return base
+
+
+def build_intro_generation_prompt(cfg: dict) -> str:
+    """Build the full prompt for greeting/intro generation: intro_generation_prompt + voice provider (TTS) tag schema.
+    Pass this to the AI that generates the intro phrase so it uses the correct tag syntax (Rime angle brackets vs ElevenLabs square brackets).
+    """
+    greeting = cfg.get("greeting") or {}
+    base = (greeting.get("intro_generation_prompt") or "").strip()
+    if not base:
+        return ""
+    return base.rstrip() + "\n\n" + _tts_tag_block_for_cfg(cfg)
 
 
 def create_agent_llm(cfg: dict):
@@ -253,6 +295,24 @@ async def entrypoint(ctx: JobContext):
     llm_prompt = build_agent_instructions(cfg)
     greeting = cfg.get("greeting") or {}
     intro_phrase = greeting.get("intro_phrase", cfg.get("intro_phrase", "Hello!"))
+    # Optionally generate intro with voice-provider tag schema in the prompt so the AI uses correct tags (Rime vs ElevenLabs)
+    intro_gen_prompt = build_intro_generation_prompt(cfg)
+    if intro_gen_prompt:
+        try:
+            from intro_gen import generate_intro
+            gen_model = greeting.get("intro_generation_model") or os.getenv("LLM_MODEL", "Pi-3.1")
+            gen_temp = greeting.get("gen_temperature", 0.9)
+            generated = await generate_intro(
+                intro_gen_prompt,
+                model=gen_model,
+                temperature=gen_temp,
+                max_tokens=80,
+            )
+            if generated:
+                intro_phrase = generated
+                logger.info("Generated intro phrase (with TTS tag schema in prompt)")
+        except Exception as e:
+            logger.debug("Intro generation skipped, using static intro_phrase: %s", e)
 
     agent_llm = create_agent_llm(cfg)
 

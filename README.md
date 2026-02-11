@@ -221,7 +221,7 @@ Use `content` or `Content`; `type` is one of: `String`, `URL`, `File Path`.
 
 ### Expressive TTS tags (LiveKit / Rime)
 
-To make agents sound livelier, use tags like `<laugh>`, `<sigh>`, `<mmm>`, `<whis>...</whis>` in `personality_prompt` and `intro_phrase`. They work best with **Rime Arcana** TTS; other engines may ignore them. See **[docs/LIVEKIT_TTS_TAGS.md](docs/LIVEKIT_TTS_TAGS.md)** for the full list and usage.
+To make agents sound livelier, use expressive tags in `personality_prompt` and `intro_phrase`. **The full tag list is injected into the prompt passed to the model** based on `tts.provider`: **Rime/Silero/Kokoro** use angle brackets (`<laugh>`, `<sigh>`, `<whis>...</whis>`); **ElevenLabs v3** uses square brackets (`[laughs]`, `[sighs]`, `[whispers]`). See **[docs/LIVEKIT_TTS_TAGS.md](docs/LIVEKIT_TTS_TAGS.md)** for the full list and usage.
 
 - Edit `agent_configs.py` to:
   - Add new personas (copy the `"celeste"` config and modify).
