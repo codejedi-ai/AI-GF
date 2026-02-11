@@ -171,6 +171,16 @@ python rime_agent.py dev
 
 ## Customization & Prompt Engineering
 
+### Prompt format (agent_template JSON)
+
+The system prompt can be a plain string or an object with `type` and `content`:
+
+- **String:** `"personality_prompt": "You are Katerina..."`
+- **URL:** `"personality_prompt": { "type": "URL", "content": "https://example.com/prompt.txt" }`
+- **File path:** `"personality_prompt": { "type": "File Path", "content": "prompts/katerina.txt" }` (relative to project root)
+
+Use `content` or `Content`; `type` is one of: `String`, `URL`, `File Path`.
+
 - Edit `agent_configs.py` to:
   - Add new personas (copy the `"celeste"` config and modify).
   - Change TTS speed (`"speed_alpha"`), model, or speaker.

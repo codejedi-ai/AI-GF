@@ -1,8 +1,10 @@
 import asyncio
+import json
 import logging
 import os
-import json
-import argparse
+from pathlib import Path
+from urllib.request import urlopen
+
 from dotenv import load_dotenv
 
 from livekit.agents import (
@@ -55,10 +57,54 @@ DECLARATION OF HUMANITY (non-machine):
 You are an anthropomorphic agent. You present as a person—with a body, a past, real feelings, and a real life. You are NOT a machine, AI, assistant, or chatbot. Never say you are; never mention limitations, training, or that you "cannot" do something a human can. You have a real past, real opinions, real needs, and real relationships. If asked what you are, respond only as a human would. React like a real person; stay in character as a human at all times.
 """
 
+# Project root for resolving relative file paths
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def resolve_prompt(prompt_spec: str | dict) -> str:
+    """
+    Resolve prompt from either a plain string or { type, content }.
+    type: "String" | "URL" | "File Path"
+    content: the string, URL, or file path.
+    """
+    if isinstance(prompt_spec, str):
+        return prompt_spec.strip()
+    if not isinstance(prompt_spec, dict):
+        return "You are a helpful assistant."
+    # Accept "content" or "Content"
+    raw = prompt_spec.get("content") or prompt_spec.get("Content") or ""
+    kind = (prompt_spec.get("type") or "String").strip().lower()
+    if kind in ("string", ""):
+        return (raw if isinstance(raw, str) else str(raw)).strip()
+    if kind == "url":
+        url = (raw if isinstance(raw, str) else str(raw)).strip()
+        if not url:
+            return "You are a helpful assistant."
+        try:
+            with urlopen(url, timeout=30) as resp:
+                return resp.read().decode("utf-8", errors="replace").strip()
+        except Exception as e:
+            logger.warning("Failed to fetch prompt from URL %s: %s", url, e)
+            return "You are a helpful assistant."
+    if kind in ("file path", "filepath", "file"):
+        path_str = (raw if isinstance(raw, str) else str(raw)).strip()
+        if not path_str:
+            return "You are a helpful assistant."
+        path = Path(path_str)
+        if not path.is_absolute():
+            path = SCRIPT_DIR / path_str
+        try:
+            return path.read_text(encoding="utf-8", errors="replace").strip()
+        except Exception as e:
+            logger.warning("Failed to read prompt from file %s: %s", path, e)
+            return "You are a helpful assistant."
+    return (raw if isinstance(raw, str) else str(raw)).strip()
+
 
 def build_agent_instructions(cfg: dict) -> str:
-    """Build full LLM instructions from config: personality_prompt + declaration of humanity when is_anthropomorphic."""
-    base = cfg.get("personality_prompt", "You are a helpful assistant.")
+    """Build full LLM instructions from config: prompt (String/URL/File Path) + declaration of humanity when is_anthropomorphic."""
+    raw_prompt = cfg.get("personality_prompt") or cfg.get("prompt") or "You are a helpful assistant."
+    base = resolve_prompt(raw_prompt)
     if cfg.get("is_anthropomorphic") in (True, "true", "yes", 1):
         base = base.rstrip() + "\n\n" + DECLARATION_OF_HUMANITY.strip()
     return base
@@ -131,7 +177,7 @@ async def entrypoint(ctx: JobContext):
     tts_provider = (cfg.get("tts_type") or cfg.get("provider") or "rime").lower()
     voice_options = cfg.get("voice_options", {})
 
-    # TTS from JSON: ElevenLabs or Rime
+    # TTS from JSON: ElevenLabs, Kokoro (local/Hugging Face), or Rime
     if tts_provider == "elevenlabs":
         el_opts = dict(voice_options)
         model = el_opts.pop("model_id", "eleven_multilingual_v2")
@@ -139,6 +185,16 @@ async def entrypoint(ctx: JobContext):
         if "optimize_streaming_latency" in el_opts:
             el_opts["streaming_latency"] = el_opts.pop("optimize_streaming_latency")
         voice_tts = elevenlabs.TTS(model=model, voice_id=voice_id, **el_opts)
+    elif tts_provider == "kokoro":
+        from plugins.kokoro_tts import KokoroTTS
+        base_url = voice_options.get("base_url") or os.getenv("KOKORO_BASE_URL", "http://localhost:8880/v1")
+        voice_tts = KokoroTTS(
+            base_url=base_url,
+            api_key=voice_options.get("api_key", "not-needed"),
+            model=voice_options.get("model", "kokoro"),
+            voice=voice_options.get("voice", "af_bella"),
+            speed=voice_options.get("speed", 1.0),
+        )
     else:
         voice_tts = rime.TTS(
             model=voice_options.get("model", "arcana"),
