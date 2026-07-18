@@ -1,6 +1,6 @@
 import logging
 from livekit.agents import function_tool
-from galatea_livekit.bus.events import OutboundMessage
+from app.livekit.bus.events import OutboundMessage
 
 logger = logging.getLogger("message-tools")
 

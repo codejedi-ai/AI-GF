@@ -11,11 +11,11 @@
 #     "python-dotenv",
 #     "requests",
 #     "aiohttp",
+#     "aiogram",
 # ]
 # ///
 
 import asyncio
-import json
 import logging
 import os
 import re
@@ -35,19 +35,20 @@ from livekit.agents import (
     ModelSettings,
     cli,
     function_tool,
-    inference,
 )
-from livekit.plugins import silero, anthropic
+from livekit.plugins import silero
 
 # Ensure the project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from galatea_livekit.providers import ElevenLabsTTS, ElevenLabsSTT
-from galatea_livekit.bus.events import InboundMessage, OutboundMessage
-from galatea_livekit.bus.queue import MessageBus
-from galatea_livekit.utils.paths import PathManager
+from app.livekit.providers import ElevenLabsTTS, ElevenLabsSTT
+from app.livekit.bus.events import InboundMessage, OutboundMessage
+from app.livekit.bus.queue import MessageBus
+from app.livekit.llm_select import build_llm
+from app.livekit.tools.registry import discover_tools
+from app.livekit.workspace_loader import load_workspace
 
 # Configure logging
 logger = logging.getLogger("galatea-voice-agent")
@@ -63,28 +64,6 @@ class GalateaVoiceAgent(Agent):
         self, chat_ctx: ChatContext, tools: list[FunctionTool], model_settings: ModelSettings
     ):
         return Agent.default.llm_node(self, chat_ctx, tools, model_settings)
-
-def load_workspace() -> dict:
-    """Load config.json, SOUL.md, and SKILLS.md from the data/galatea directory."""
-    config_path = PathManager.get_config_path()
-    soul_path = PathManager.get_soul_path()
-    skills_path = PathManager.get_skills_path()
-    
-    config = {}
-    if config_path.exists():
-        try:
-            config = json.loads(config_path.read_text(encoding="utf-8"))
-        except Exception as e:
-            logger.error(f"Failed to load config.json: {e}")
-
-    soul = soul_path.read_text(encoding="utf-8") if soul_path.exists() else "You are a helpful assistant."
-    skills = skills_path.read_text(encoding="utf-8") if skills_path.exists() else ""
-
-    return {
-        "config": config,
-        "soul": soul,
-        "skills": skills,
-    }
 
 server = AgentServer()
 
@@ -119,34 +98,28 @@ async def entrypoint(ctx: JobContext):
         await bus.publish_inbound(msg)
         return "Command sent to system bus."
 
+    # Modular tools: each is a <name>.json declaration + <name>.py definition
+    # under app/livekit/tools/ (see registry.py). Re-scanned every session so
+    # a tool added or edited on disk is picked up without a restart.
+    modular_tools = discover_tools()
+    agent_tools = [command_body, *modular_tools]
+
     # 4. Initialize Agent & Session
     agent = GalateaVoiceAgent(
         instructions=system_prompt,
-        tools=[command_body],
+        tools=agent_tools,
     )
 
     # Use ElevenLabs for BOTH TTS and STT
     voice_id = cfg.get("voice_id") or os.getenv("ELEVEN_VOICE_ID", "95XPUDALaQL1LY3I023E")
-    llm_model = cfg.get("llm_model", "claude-haiku-4-5")
-    llm_provider = cfg.get("provider", "anthropic").lower()
-
-    if llm_provider == "anthropic":
-        llm = anthropic.LLM(model=llm_model)
-    elif llm_provider == "openai":
-        from livekit.plugins import openai
-        llm = openai.LLM(model=llm_model)
-    elif llm_provider == "google":
-        from livekit.plugins import google
-        llm = google.LLM(model=llm_model)
-    else:
-        llm = inference.LLM(llm_model)
+    llm = build_llm(cfg)
 
     session = AgentSession(
         vad=silero.VAD.load(),
         stt=ElevenLabsSTT(), 
         llm=llm,
         tts=ElevenLabsTTS(voice_id=voice_id),
-        tools=[command_body]
+        tools=agent_tools
     )
 
     # 5. Listen for Outbound Queue (Responses from System)

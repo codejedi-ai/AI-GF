@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import sys
-from galatea_livekit.bus.events import InboundMessage, OutboundMessage
-from galatea_livekit.bus.queue import MessageBus
+from app.livekit.bus.events import InboundMessage, OutboundMessage
+from app.livekit.bus.queue import MessageBus
 
 logger = logging.getLogger("cli-channel")
 

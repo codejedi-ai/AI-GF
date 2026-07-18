@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import AsyncGenerator, Optional, Dict, Any
 from .events import InboundMessage, OutboundMessage, HistoryRequest
-from galatea_livekit.utils.paths import PathManager
+from app.livekit.utils.paths import PathManager
 
 logger = logging.getLogger("sqlite-bus")
 

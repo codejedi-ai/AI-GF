@@ -2,7 +2,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
-from galatea_livekit.utils.paths import PathManager
+from app.livekit.utils.paths import PathManager
 
 logger = logging.getLogger("config-manager")
 

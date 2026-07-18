@@ -5,9 +5,10 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram import F
+from aiogram.types import BufferedInputFile
 
-from galatea_livekit.bus.events import InboundMessage, OutboundMessage
-from galatea_livekit.bus.queue import MessageBus
+from app.livekit.bus.events import InboundMessage, OutboundMessage
+from app.livekit.bus.queue import MessageBus
 
 logger = logging.getLogger("telegram-channel")
 
@@ -66,11 +67,19 @@ class TelegramChannel:
     async def _listen_outbound(self):
         async for msg in self._bus.subscribe_outbound("telegram"):
             try:
-                await self._bot.send_message(
-                    chat_id=msg.chat_id,
-                    text=msg.text,
-                    parse_mode=ParseMode.MARKDOWN
-                )
+                audio_bytes = msg.payload.get("audio_bytes") if msg.media_type == "voice" else None
+                if audio_bytes:
+                    await self._bot.send_voice(
+                        chat_id=msg.chat_id,
+                        voice=BufferedInputFile(audio_bytes, filename="reply.mp3"),
+                        caption=msg.text[:1024] or None,
+                    )
+                else:
+                    await self._bot.send_message(
+                        chat_id=msg.chat_id,
+                        text=msg.text,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
             except Exception as e:
                 logger.error(f"Failed to send message to Telegram: {e}")
 

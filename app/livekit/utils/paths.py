@@ -44,5 +44,11 @@ class PathManager:
         return d
 
     @classmethod
+    def get_config_dir(cls) -> Path:
+        d = cls.get_root() / "config"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @classmethod
     def get_db_path(cls, db_name: str) -> str:
         return str(cls.get_data_dir() / f"{db_name}.db")

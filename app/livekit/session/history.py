@@ -3,7 +3,7 @@ import json
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
-from galatea_livekit.utils.paths import PathManager
+from app.livekit.utils.paths import PathManager
 
 logger = logging.getLogger("galatea-history")
 

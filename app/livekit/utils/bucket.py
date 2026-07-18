@@ -1,6 +1,6 @@
 import json
 from typing import Any, List, Optional
-from galatea_livekit.utils.paths import PathManager
+from app.livekit.utils.paths import PathManager
 
 class BucketStore:
     def __init__(self, bucket_name: str = "default"):

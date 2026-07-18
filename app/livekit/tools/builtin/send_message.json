@@ -1,0 +1,26 @@
+{
+  "name": "send_message",
+  "description": "Send a message to a specific channel/target, bypassing the primary reasoning loop. Use this to proactively reach a user on another channel (e.g. telegram) instead of replying in the current turn.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "string",
+        "description": "Channel to send to, e.g. 'telegram' or 'voice'."
+      },
+      "user_id": {
+        "type": "string",
+        "description": "The recipient's user id."
+      },
+      "chat_id": {
+        "type": "string",
+        "description": "The conversation/chat id to send into."
+      },
+      "text": {
+        "type": "string",
+        "description": "The message text to send."
+      }
+    },
+    "required": ["target", "user_id", "chat_id", "text"]
+  }
+}
