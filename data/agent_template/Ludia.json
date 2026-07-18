@@ -3,7 +3,11 @@
   "role": "Girl",
   "is_anthropomorphic": true,
   "sex": "female",
-  "llm": { "provider": "openai", "model": "gpt-4o-mini", "url": null },
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "url": null
+  },
   "tokenizer_config": {
     "type": "ArcanaSentenceTokenizer",
     "min_sentence_len": 1000
@@ -15,10 +19,17 @@
     "intro_generation_model": "Pi-3.1",
     "gen_temperature": 0.9
   },
-  "tools": ["deep_thinking", "empathy"],
+  "tools": [
+    "deep_thinking",
+    "empathy"
+  ],
   "mcp_config": {
     "enabled": true,
-    "tools": ["weather", "time", "calendar"],
+    "tools": [
+      "weather",
+      "time",
+      "calendar"
+    ],
     "api_endpoint": "http://localhost:8000/mcp",
     "api_key": "your-mcp-api-key"
   },
@@ -38,5 +49,10 @@
     "model": "gpt-4o-mini-transcribe",
     "url": null
   },
-  "vad": { "provider": "silero" }
+  "vad": {
+    "provider": "silero"
+  },
+  "requirements": [
+    "livekit-plugins-rime @ git+https://github.com/rimelabs/livekit-agents.git@bddcc0d265176bb6b3a6b32d6773e7980e08790c#subdirectory=livekit-plugins/livekit-plugins-rime"
+  ]
 }

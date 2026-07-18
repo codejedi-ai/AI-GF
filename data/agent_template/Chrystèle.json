@@ -33,5 +33,10 @@
   "vad": {
     "provider": "silero",
     "model": "silero_vad"
-  }
+  },
+  "requirements": [
+    "torch>=2.0",
+    "torchaudio>=2.0",
+    "omegaconf>=2.3"
+  ]
 }

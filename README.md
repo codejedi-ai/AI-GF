@@ -109,7 +109,8 @@ python app/main.py dev                                                # SELECTED
     "voice_options": { "speaker": "celeste", "speed_alpha": 1.5 }
   },
   "stt": { "provider": "openai", "model": "gpt-4o-mini-transcribe" },  // smallestai | silero | openai
-  "vad": { "provider": "silero" }
+  "vad": { "provider": "silero" },
+  "requirements": ["livekit-plugins-rime @ git+https://github.com/rimelabs/livekit-agents.git@bddcc0d265176bb6b3a6b32d6773e7980e08790c#subdirectory=livekit-plugins/livekit-plugins-rime"]
 }
 ```
 
@@ -118,10 +119,28 @@ Notes:
 - `llm.url` makes any OpenAI-compatible server work (Ollama, LM Studio, vLLM…).
 - `personality_prompt` accepts a plain string or `{ "type": "File Path", "content": "data/prompts/<file>" }` — paths resolve from the repo root, keeping long prompts out of the JSON.
 - Unknown providers fail fast with the list of available ones.
+- `requirements` (optional array of pip specs) declares the extra packages *this agent's* providers need, beyond the always-installed core in `requirements-core.txt`. It's how a config that names, say, `"llm": "google"` says so itself instead of that being hardcoded anywhere in code.
 
 ## Adding a provider
 
 1. Add a module under `app/galatea/providers/<stage>/` exposing `create(cfg: dict)`.
 2. Register its name in the matching table in `app/galatea/providers/__init__.py`.
+3. If it needs an extra pip package, note it in the `requirements` array of any agent JSON that uses it (see above).
 
 Nothing else changes — configs can name the new provider immediately, and its imports stay lazy.
+
+## Deploying to LiveKit Cloud
+
+Each Cloud Agent deployment runs one image built from one `requirements.txt`,
+dedicated to whichever agent config it defaults to. Before deploying (or
+switching which agent a deployment runs), regenerate `requirements.txt` from
+that agent's own declared `requirements`:
+
+```bash
+python app/galatea/build_requirements.py --config data/agent_template/Natasha.json
+lk agent deploy .   # or `lk agent create .` for a first deploy
+```
+
+`requirements.txt` is generated — edit `requirements-core.txt` (always
+installed) or the target agent's JSON `requirements` array instead of editing
+`requirements.txt` by hand.

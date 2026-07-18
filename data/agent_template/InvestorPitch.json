@@ -36,5 +36,9 @@
   },
   "vad": {
     "provider": "silero"
-  }
+  },
+  "requirements": [
+    "livekit-plugins-google>=1.0.20",
+    "livekit-plugins-elevenlabs>=1.0.20"
+  ]
 }
