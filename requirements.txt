@@ -1,86 +1,33 @@
-aiofiles
-aiohappyeyeballs
-aiohttp
-aiosignal
-annotated-types
-anyio
-attrs
-av
-certifi
-cffi
-charset-normalizer
-click
-cryptography
-colorama
-coloredlogs
-distro
-docstring_parser
-eval_type_backport
-filelock
-flatbuffers
-frozenlist
-fsspec
-h11
-httpcore
-httpx
-huggingface-hub
-humanfriendly
-idna
-Jinja2
-jiter
-livekit
-livekit-agents
-livekit-api
-livekit-plugins-anthropic
-livekit-plugins-cartesia
-livekit-plugins-elevenlabs
-livekit-plugins-google
-livekit-plugins-noise-cancellation
-livekit-plugins-openai
-livekit-plugins-rime
-livekit-plugins-silero
-livekit-plugins-turn-detector
-livekit-protocol
-MarkupSafe
-mpmath
-multidict
-nest-asyncio
-numpy
-omegaconf
-onnxruntime
-openai
-packaging
-pillow
-propcache
-protobuf
-psutil
-pycparser
-pydantic
-pydantic_core
-PyJWT
-python-dotenv
-PyYAML
-regex
-requests
-safetensors
-smallestai
-sniffio
-snowflake-connector-python
-sounddevice
-sympy
-tokenizers
-torch
-torchaudio
-tqdm
-transformers
-types-protobuf
-typing-inspection
-typing_extensions
-Unidecode
-urllib3
-watchfiles
-websockets
-yarl
-google-genai
-aiogram
-redis
+# Core — always required
+python-dotenv>=1.1.0
+livekit>=1.0.7
+livekit-agents>=1.0.20
+livekit-api>=1.0.2
+livekit-plugins-openai>=1.0.20
+livekit-plugins-silero>=1.0.11
+livekit-plugins-noise-cancellation>=0.2.2
+openai>=1.72.0
+httpx>=0.28.1
+aiohttp>=3.11.16
+numpy>=2.2.4
+
+# Optional providers — install only what your agent JSONs actually use.
+# The provider registry imports these lazily, so a missing package only
+# matters if a config names that provider.
+#
+# llm.provider = "google":
+#   livekit-plugins-google
+# llm.provider = "anthropic":
+#   livekit-plugins-anthropic
+# tts.provider = "elevenlabs":
+#   livekit-plugins-elevenlabs
+# tts.provider = "rime":
+#   livekit-plugins-rime @ git+https://github.com/rimelabs/livekit-agents.git@bddcc0d265176bb6b3a6b32d6773e7980e08790c#subdirectory=livekit-plugins/livekit-plugins-rime
+# llm/tts provider = "huggingface":
+#   transformers
+#   torch
+# tts/stt provider = "silero" (local models via torch.hub):
+#   torch
+#   torchaudio
+#   omegaconf
+# tts.provider = "kokoro": no extra package (needs a running Kokoro-FastAPI server)

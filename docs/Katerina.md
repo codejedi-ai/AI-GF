@@ -1,7 +1,7 @@
 # Katerina
 
 **Role:** Friend  
-**Config:** `agent_template/Katerina.json`
+**Config:** `data/agent_template/Katerina.json`
 
 ## Overview
 

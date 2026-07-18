@@ -1,7 +1,7 @@
 # Wei
 
 **Role:** Friend  
-**Config:** `agent_template/Wei.json`
+**Config:** `data/agent_template/Wei.json`
 
 ## Overview
 

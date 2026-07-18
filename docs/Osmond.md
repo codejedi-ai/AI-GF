@@ -1,7 +1,7 @@
 # Osmond
 
 **Role:** Friend / Thinker  
-**Config:** `agent_template/Osmond.json`
+**Config:** `data/agent_template/Osmond.json`
 
 ## Overview
 

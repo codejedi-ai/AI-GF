@@ -1,7 +1,7 @@
 # Dex
 
 **Role:** Friend  
-**Config:** `agent_template/Dex.json`
+**Config:** `data/agent_template/Dex.json`
 
 ## Overview
 

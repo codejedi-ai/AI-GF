@@ -1,7 +1,7 @@
 # Lily
 
 **Role:** Friend  
-**Config:** `agent_template/Lily.json`
+**Config:** `data/agent_template/Lily.json`
 
 ## Overview
 

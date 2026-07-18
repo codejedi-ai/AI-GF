@@ -1,7 +1,7 @@
 # Ludia
 
 **Role:** Girl  
-**Config:** `agent_template/Ludia.json`
+**Config:** `data/agent_template/Ludia.json`
 
 ## Overview
 

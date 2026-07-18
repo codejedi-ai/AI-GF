@@ -1,0 +1,5 @@
+*.ii
+*.s
+tmp*
+*.sh
+node_modules

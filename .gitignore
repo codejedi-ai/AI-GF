@@ -1,27 +1,34 @@
-.idea/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
 .mypy_cache/
-.env.local
-.env
-.env.dev
-.env.prod
+.pytest_cache/
+.ruff_cache/
 .venv/
 venv/
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Secrets & local env
+.env
+.env.local
+*.pem
+
+# Runtime artifacts
+*.db
+*.sqlite3
+*.log
+app/browser-control/browser_data/
+app/browser-control/debug_artifacts/
+app/browser-control/screenshots/
+
+# OS / editor
 .DS_Store
-
-__pycache__/*
-
-# Python
-*.pyc
-*.pyo
-*.pyd
-*.pyw
-*.pyz
-
-# ignore audio files
-*.wav
-*.mp3
-*.m4a
-*.ogg
-*.flac
-*.aac
-*.wma
+.idea/
+.vscode/
+.obsidian/
+app/browser-control/load_env.bat

@@ -1,7 +1,7 @@
 # Investor Pitch
 
 **Role:** Founder  
-**Config:** `agent_template/InvestorPitch.json`
+**Config:** `data/agent_template/InvestorPitch.json`
 
 ## Overview
 
@@ -20,7 +20,7 @@ The agent prompt is built from slide content in `docs/demo/slides/`. After editi
 python generate_pitch_agent.py [--slides-dir PATH] [--output PATH]
 ```
 
-This writes/updates `agent_template/InvestorPitch.json` with the full deck in the system prompt.
+This writes/updates `data/agent_template/InvestorPitch.json` with the full deck in the system prompt.
 
 ## Run
 

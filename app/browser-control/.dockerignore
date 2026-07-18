@@ -1,0 +1,13 @@
+__pycache__
+.venv
+.env
+.git
+.DS_Store
+browser_data/
+screenshots/
+data/
+archive/
+docs/
+tests/
+debug_artifacts/
+*.log

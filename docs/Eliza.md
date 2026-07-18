@@ -1,7 +1,7 @@
 # Eliza
 
 **Role:** Friend  
-**Config:** `agent_template/Eliza.json`
+**Config:** `data/agent_template/Eliza.json`
 
 ## Overview
 
