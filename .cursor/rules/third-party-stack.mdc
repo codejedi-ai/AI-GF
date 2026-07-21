@@ -1,0 +1,23 @@
+---
+description: AI-GF uses third-party cloud providers; do not conflate with GirlfriendGPT local stack
+alwaysApply: true
+---
+
+# AI-GF = third-party Galatea companions
+
+**AI-GF** (`agents/AI-GF`) uses **third-party** providers (cloud APIs: Rime,
+Google, Anthropic, etc.) for Galatea companions.
+
+Do **not** conflate with **GirlfriendGPT**, which is the **complete local**
+stack (Speaches/Ollama-style LLM/STT/TTS) and hosts the voice + CLI channel
+ALI primarily orchestrates for local agents.
+
+**ALI** can orchestrate both products over LiveKit. Agent JSON `packages` and
+`models.provider` here must reflect **cloud / third-party** plugins — not
+GirlfriendGPT local Speaches/Ollama assumptions.
+
+## Ownership
+
+- Galatea / third-party voice companions → this tree (`agents/AI-GF`)
+- Local Speaches/Ollama voice + CLI buffer → **GirlfriendGPT**
+- LiveKit control plane / tokens / panel → **ALI**
